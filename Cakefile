@@ -8,7 +8,7 @@ source_files = []
 source_files.push
   name   : 'Server files'
   dir    : 'lib/'
-  coffee : ['']
+  coffee : ['middleware']
   run    : '../bin/server'
 
 source_files = source_files.map (batch) ->
@@ -16,7 +16,7 @@ source_files = source_files.map (batch) ->
   name   : batch.name
   bare   : batch.bare
   join   : dir + batch.join if batch.join?
-  coffee : batch.coffee.map (filename) -> dir + filename
+  coffee : batch.coffee.map (filename) -> dir + filename + '.coffee'
   run    : dir + batch.run if batch.run?
 
 # Compile a batch of coffee files
