@@ -80,6 +80,7 @@ batches.push new Batch
   dir    : 'browser/'
   join   : 'browser.js'
   bundle : [
+    path.resolve(require.resolve('superagent'), '../lib/events.js')
     path.resolve(require.resolve('superagent'), '../lib/superagent.js')
     require.resolve('eventemitter2')
   ]

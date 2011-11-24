@@ -4,6 +4,6 @@ rest = require('../lib/middleware.js');
 connect = require('connect');
 
 server = connect.createServer();
-server.use(connect.static('../public'));
-server.use(rest());
+server.use('/hookio', rest());
+server.use(connect.static('public'));
 server.listen(3000);
