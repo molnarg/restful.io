@@ -9,6 +9,7 @@ source_files.push
   name   : 'Server files'
   dir    : 'lib/'
   coffee : ['']
+  run    : '../bin/server'
 
 source_files = source_files.map (batch) ->
   dir = batch.dir ? ''
@@ -42,6 +43,21 @@ watch = (batch, callback) ->
   for sourcefile in batch.coffee
     onFileChange sourcefile, -> compile(batch, callback)
 
+run = (batch) ->
+  return if not batch.run?
+
+  console.log "#{batch.name} : Running #{batch.run}"
+
+  # Kill running instance first if any
+  if batch.process?
+    batch.process.kill()
+
+  # Run a new instance
+  batch.process = spawn batch.run
+  batch.process.stdout.on 'data', (data) -> print data.toString()
+  batch.process.stderr.on 'data', (data) -> print data.toString()
+
+
 task 'build', 'Compile CoffeeScript source files', ->
   for batch in source_files
     compile batch
@@ -50,3 +66,9 @@ task 'watch', 'Recompile CoffeeScript source files when modified', ->
   for batch in source_files
     compile batch
     watch batch
+
+task 'watch_and_run', 'Recompile CoffeeScript source files when modified, and run batches which have an executable specified.', ->
+  for batch in source_files
+    compile batch
+    run batch
+    watch batch, run
