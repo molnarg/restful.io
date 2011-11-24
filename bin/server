@@ -1,0 +1,9 @@
+#!/usr/bin/env node
+
+rest = require('../lib/middleware.js');
+connect = require('connect');
+
+server = connect.createServer();
+server.use(connect.static('../public'));
+server.use(rest());
+server.listen(3000);
