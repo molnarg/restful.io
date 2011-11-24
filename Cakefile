@@ -4,12 +4,16 @@ fs            = require 'fs'
 
 source_files = []
 
-# Server files
 source_files.push
   name   : 'Server files'
   dir    : 'lib/'
   coffee : ['middleware']
   run    : '../bin/server'
+
+source_files.push
+  name   : 'Browser files'
+  dir    : 'browser/'
+  coffee : ['browser']
 
 source_files = source_files.map (batch) ->
   dir = batch.dir ? ''

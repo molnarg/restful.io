@@ -1,6 +1,7 @@
-{Hook} = require 'hook.io'
-url = require 'url'
+{Hook}      = require 'hook.io'
+url         = require 'url'
 querystring = require 'querystring'
+fs          = require 'fs'
 
 hook = new Hook
   name  : 'rest'
@@ -29,6 +30,14 @@ emit = (eventname, options, req, res) ->
     res.end()
 
 module.exports = -> (req, res) ->
+  if req.url is '/client.js'
+    location = req.headers.host + req.originalUrl.match(/.*\//)
+
+    res.write "window.hook_address = '#{location}';"
+    fs.readFile 'browser/browser.js', (err, content) -> res.end content
+
+    return
+
   {pathname, query} = url.parse(req.url)
   eventname = pathname.split('/')
                       .filter( (x) -> x.length > 0 )
