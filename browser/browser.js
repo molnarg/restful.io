@@ -1216,17 +1216,53 @@ var superagent = function(exports){
   var __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor; child.__super__ = parent.prototype; return child; };
 
   Hook = (function() {
+    var create_url;
 
     __extends(Hook, EventEmitter2);
 
+    create_url = function(base_url, eventname, options) {
+      var name, pathname, query;
+      pathname = eventname.split('::').filter(function(x) {
+        return x.length > 0;
+      }).join('/');
+      query = options != null ? '?' + ((function() {
+        var _results;
+        _results = [];
+        for (name in options) {
+          _results.push("" + name + "=" + options[name]);
+        }
+        return _results;
+      })()).join('&') : '';
+      return 'http://' + base_url + pathname + query;
+    };
+
     function Hook(base_url) {
-      this.base_url = base_url;
+      this.base_url = base_url != null ? base_url : window.hook_address;
+      Hook.__super__.constructor.call(this, {
+        wildcard: true,
+        delimiter: '::'
+      });
     }
+
+    Hook.prototype.emit = function(eventname, data, callback) {
+      var method, url;
+      url = create_url(this.base_url, eventname);
+      method = callback != null ? 'put' : 'post';
+      return superagent(method, url).data(data).end();
+    };
+
+    Hook.prototype.on = function(eventname, callback) {
+      var url;
+      url = create_url(this.base_url, eventname);
+      return superagent('GET', url).end(function(res) {
+        if (res.ok) return callback(res.body);
+      });
+    };
 
     return Hook;
 
   })();
 
-  window.hook = new Hook(window.hook_address);
+  window.Hook = Hook;
 
 }).call(this);
