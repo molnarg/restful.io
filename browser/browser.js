@@ -1213,10 +1213,10 @@ var superagent = function(exports){
 }(typeof exports === 'undefined' ? window : exports);
 (function() {
   var Hook;
-  var __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor; child.__super__ = parent.prototype; return child; };
+  var __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; }, __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor; child.__super__ = parent.prototype; return child; }, __indexOf = Array.prototype.indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (__hasProp.call(this, i) && this[i] === item) return i; } return -1; };
 
   Hook = (function() {
-    var create_url;
+    var chain, create_url;
 
     __extends(Hook, EventEmitter2);
 
@@ -1236,27 +1236,117 @@ var superagent = function(exports){
       return 'http://' + base_url + pathname + query;
     };
 
+    chain = function() {
+      var functions;
+      functions = arguments;
+      return function() {
+        var fn, values;
+        values = (function() {
+          var _i, _len, _results;
+          _results = [];
+          for (_i = 0, _len = functions.length; _i < _len; _i++) {
+            fn = functions[_i];
+            _results.push(fn.apply(this, arguments));
+          }
+          return _results;
+        }).apply(this, arguments);
+        return values[0];
+      };
+    };
+
     function Hook(base_url) {
+      var fn, _i, _len, _ref;
       this.base_url = base_url != null ? base_url : window.hook_address;
+      this.send = __bind(this.send, this);
+      this.stop_listening = __bind(this.stop_listening, this);
+      this.listen = __bind(this.listen, this);
+      this.check_listeners = __bind(this.check_listeners, this);
       Hook.__super__.constructor.call(this, {
         wildcard: true,
         delimiter: '::'
       });
+      this.longpolls = {};
+      _ref = ['on', 'off', 'removeAllListeners'];
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        fn = _ref[_i];
+        this[fn] = chain(this[fn], this.check_listeners);
+      }
+      this.emit = chain(this.emit, this.check_listeners);
+      this.onAny(this.send);
     }
 
-    Hook.prototype.emit = function(eventname, data, callback) {
-      var method, url;
-      url = create_url(this.base_url, eventname);
-      method = callback != null ? 'put' : 'post';
-      return superagent(method, url).data(data).end();
+    Hook.prototype.check_listeners = function() {
+      var event, events, find_events, x, _i, _len, _results;
+      find_events = function(tree, route, events) {
+        var eventname;
+        if (route == null) route = [];
+        if (events == null) events = [];
+        if (tree.listenerTree != null) {
+          return find_events(tree.listenerTree, route, events);
+        }
+        if (tree._listeners != null) events.push(route.join('::'));
+        for (eventname in tree) {
+          if (eventname === '_listeners') continue;
+          find_events(tree[eventname], route.concat([eventname]), events);
+        }
+        return events;
+      };
+      events = find_events(this);
+      console.log('checking listeners', (function() {
+        var _results;
+        _results = [];
+        for (x in this.longpolls) {
+          _results.push(x);
+        }
+        return _results;
+      }).call(this), events);
+      for (event in this.longpolls) {
+        if (__indexOf.call(events, event) < 0) this.stop_listening(event);
+      }
+      _results = [];
+      for (_i = 0, _len = events.length; _i < _len; _i++) {
+        event = events[_i];
+        if (!(event in this.longpolls)) {
+          _results.push(this.listen(event));
+        } else {
+          _results.push(void 0);
+        }
+      }
+      return _results;
     };
 
-    Hook.prototype.on = function(eventname, callback) {
-      var url;
-      url = create_url(this.base_url, eventname);
-      return superagent('GET', url).end(function(res) {
-        if (res.ok) return callback(res.body);
-      });
+    Hook.prototype.listen = function(event) {
+      var longpoll, url;
+      var _this = this;
+      if (event in this.longpolls) return;
+      url = create_url(this.base_url, event);
+      console.log('listening', event, url);
+      longpoll = function() {
+        _this.longpolls[event] = superagent('GET', url);
+        _this.longpolls[event].end(function(res) {
+          if (res.ok) EventEmitter2.prototype.emit.call(_this, event, res.body);
+          if (_this.longpolls[event] != null) return longpoll();
+        });
+        return _this.longpolls[event];
+      };
+      return longpoll();
+    };
+
+    Hook.prototype.stop_listening = function(event) {
+      var xhr;
+      console.log('stopped listening', event);
+      xhr = this.longpolls[event].xhr;
+      delete this.longpolls[event];
+      return xhr.abort();
+    };
+
+    Hook.prototype.send = function(event, data, callback) {
+      var method, url;
+      console.log('sending', event, data);
+      if (!(data != null)) return;
+      url = create_url(this.base_url, event);
+      method = callback != null ? 'put' : 'post';
+      return superagent(method, url).data(data).end();
     };
 
     return Hook;
