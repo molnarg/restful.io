@@ -30,6 +30,14 @@ emit = (eventname, options, req, res) ->
     res.end()
 
 module.exports = -> (req, res) ->
+  if req.method is 'OPTIONS'
+    res.writeHead 200
+      'Access-Control-Allow-Origin'  : '*'
+      'Access-Control-Allow-Methods' : 'GET, POST, PUT'
+      'Access-Control-Allow-Headers' : 'Content-Type'
+
+    return res.end()
+
   if req.url is '/client.js'
     location = req.headers.host + req.originalUrl.match(/.*\//)
 
