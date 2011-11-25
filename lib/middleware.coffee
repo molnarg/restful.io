@@ -11,6 +11,8 @@ hook.start()
 
 listen = (eventname, options, req, res) ->
   hook.once eventname, (data) ->
+    res.writeHead 200,
+      'Content-Type' : 'application/json'
     res.end JSON.stringify(data)
 
 emit = (eventname, options, req, res) ->
@@ -31,7 +33,7 @@ emit = (eventname, options, req, res) ->
 
 module.exports = -> (req, res) ->
   if req.method is 'OPTIONS'
-    res.writeHead 200
+    res.writeHead 200,
       'Access-Control-Allow-Origin'  : '*'
       'Access-Control-Allow-Methods' : 'GET, POST, PUT'
       'Access-Control-Allow-Headers' : 'Content-Type'
