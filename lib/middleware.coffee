@@ -3,11 +3,7 @@ url         = require 'url'
 querystring = require 'querystring'
 fs          = require 'fs'
 
-hook = new Hook
-  name  : 'rest'
-  debug : true
-
-hook.start()
+hook = undefined
 
 listen = (eventname, options, req, res) ->
   # EventEmitter2 BUG workaround
@@ -37,7 +33,14 @@ emit = (eventname, options, req, res) ->
     hook.emit eventname, data
     res.end()
 
-module.exports = -> (req, res) ->
+module.exports = ->
+  hook = new Hook
+    name  : 'rest'
+    debug : true
+
+  hook.start()
+
+  return (req, res) ->
   if req.method is 'OPTIONS'
     res.writeHead 200,
       'Access-Control-Allow-Origin'  : '*'
