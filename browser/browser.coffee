@@ -56,8 +56,6 @@ class Hook extends EventEmitter2
       wildcard : true
       delimiter : '::'
 
-    @longpolls = {}
-
     for fn in ['on', 'off', 'removeAllListeners']
       this[fn] = chain this[fn], @check_listeners
 
@@ -84,33 +82,6 @@ class Hook extends EventEmitter2
           traverse node, (child) -> child._longpoll?.start()
 
     traverse @listenerTree, check_node
-
-  listen : (event) =>
-    return if event of @longpolls
-
-    url = create_url @base_url, event
-
-    console.log 'listening', event, url
-
-    longpoll = =>
-      @longpolls[event] = superagent('GET', url)
-      @longpolls[event].end (res) =>
-        if res.ok
-          EventEmitter2.prototype.emit.call this, event, res.body
-
-        # Continure polling if needed
-        if @longpolls[event]?
-          longpoll()
-      return @longpolls[event]
-
-    longpoll()
-
-  stop_listening : (event) =>
-    console.log 'stopped listening', event
-
-    xhr = @longpolls[event].xhr
-    delete @longpolls[event]
-    xhr.abort()
 
   send : (event, data, callback) =>
     return if event is 'newListener'

@@ -1331,14 +1331,11 @@ var superagent = function(exports){
       var fn, _i, _len, _ref;
       this.base_url = base_url != null ? base_url : window.hook_address;
       this.send = __bind(this.send, this);
-      this.stop_listening = __bind(this.stop_listening, this);
-      this.listen = __bind(this.listen, this);
       this.check_listeners = __bind(this.check_listeners, this);
       Hook.__super__.constructor.call(this, {
         wildcard: true,
         delimiter: '::'
       });
-      this.longpolls = {};
       _ref = ['on', 'off', 'removeAllListeners'];
       for (_i = 0, _len = _ref.length; _i < _len; _i++) {
         fn = _ref[_i];
@@ -1375,31 +1372,6 @@ var superagent = function(exports){
         }
       };
       return traverse(this.listenerTree, check_node);
-    };
-
-    Hook.prototype.listen = function(event) {
-      var longpoll, url;
-      var _this = this;
-      if (event in this.longpolls) return;
-      url = create_url(this.base_url, event);
-      console.log('listening', event, url);
-      longpoll = function() {
-        _this.longpolls[event] = superagent('GET', url);
-        _this.longpolls[event].end(function(res) {
-          if (res.ok) EventEmitter2.prototype.emit.call(_this, event, res.body);
-          if (_this.longpolls[event] != null) return longpoll();
-        });
-        return _this.longpolls[event];
-      };
-      return longpoll();
-    };
-
-    Hook.prototype.stop_listening = function(event) {
-      var xhr;
-      console.log('stopped listening', event);
-      xhr = this.longpolls[event].xhr;
-      delete this.longpolls[event];
-      return xhr.abort();
     };
 
     Hook.prototype.send = function(event, data, callback) {
