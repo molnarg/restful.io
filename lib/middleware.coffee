@@ -10,10 +10,16 @@ hook = new Hook
 hook.start()
 
 listen = (eventname, options, req, res) ->
-  hook.once eventname, (data) ->
+  # EventEmitter2 BUG workaround
+  respond = (data) ->
     res.writeHead 200,
       'Content-Type' : 'application/json'
+      'Hookio-Event' : @event
     res.end JSON.stringify(data)
+
+    hook.off eventname, respond
+
+  hook.on eventname, respond
 
 emit = (eventname, options, req, res) ->
   data = ''
