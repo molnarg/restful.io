@@ -51,9 +51,10 @@ module.exports = ->
 
     if req.url is '/client.js'
       location = req.headers.host + req.originalUrl.match(/.*\//)
-
       res.write "window.hook_address = '#{location}';"
-      fs.readFile 'browser/browser.js', (err, content) -> res.end content
+
+      client_path = __dirname + '/../browser/browser.js'
+      fs.readFile client_path, (err, content) -> res.end content
 
       return
 
