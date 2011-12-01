@@ -1214,26 +1214,248 @@ var superagent = function(exports){
 
 }(typeof exports === 'undefined' ? window : exports);
 (function() {
-  var EventListener, Hook, LongPoll;
-  var __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; }, __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor; child.__super__ = parent.prototype; return child; };
+  var CoupledEventEmitter2, Hook, LongPoll, ServerSentEvents, countListeners, findAndRemove, insert, newEventRequest, selectMoreGeneral;
+  var __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor; child.__super__ = parent.prototype; return child; }, __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
+
+  selectMoreGeneral = function(event1, event2) {
+    var index, more_general, part1, part2, _len, _ref;
+    if ((event1.length !== event2.length) || (event1.level === event2.level)) {
+      return;
+    }
+    more_general = void 0;
+    _ref = event1.parts;
+    for (index = 0, _len = _ref.length; index < _len; index++) {
+      part1 = _ref[index];
+      part2 = event2.parts[index];
+      if (part1 === '*' && part2 === '*') {
+        continue;
+      } else if (part1 === '*') {
+        if (event2 === more_general) return;
+        more_general = event1;
+      } else if (part2 === '*') {
+        if (event1 === more_general) return;
+        more_general = event2;
+      } else if (part1 !== part2) {
+        return;
+      }
+    }
+    return more_general;
+  };
+
+  insert = function(new_event, tree) {
+    var event, event_name, more_general;
+    for (event_name in tree) {
+      event = tree[event_name];
+      more_general = selectMoreGeneral(new_event, event);
+      if (more_general === void 0) {
+        continue;
+      } else {
+        if (new_event === more_general) {
+          new_event.shadow[event_name] = event;
+          delete tree[event_name];
+        } else {
+          return insert(new_event, event.shadow);
+        }
+      }
+    }
+    tree[new_event.type] = new_event;
+    return tree;
+  };
+
+  findAndRemove = function(name_to_remove, tree) {
+    var event, eventname, result;
+    if (name_to_remove in tree) {
+      event = tree[name_to_remove];
+      delete tree[name_to_remove];
+      return {
+        event: event,
+        parent: tree
+      };
+    } else {
+      for (eventname in tree) {
+        event = tree[eventname];
+        result = findAndRemove(name_to_remove, event.shadow);
+        if (result !== void 0) return result;
+      }
+    }
+  };
+
+  countListeners = function(type, tree) {
+    if (type.length !== 0) {
+      if (type[0] in tree) {
+        return countListeners(type.slice(1), tree[type[0]]);
+      } else {
+        return 0;
+      }
+    } else {
+      if (!(tree._listeners != null)) {
+        return 0;
+      } else if (typeof tree._listeners === 'function') {
+        return 1;
+      } else {
+        return tree._listeners.length;
+      }
+    }
+  };
+
+  CoupledEventEmitter2 = (function() {
+    var addIncomingEvent, removeIncomingEvent;
+
+    __extends(CoupledEventEmitter2, EventEmitter2);
+
+    addIncomingEvent = function(type) {
+      var event, parent, parts;
+      event = {
+        type: type,
+        parts: parts = type.split(this.delimiter),
+        length: parts.length,
+        level: parts.filter(function(x) {
+          return x === '*';
+        }).length,
+        shadow: {}
+      };
+      parent = insert(event, this._incoming);
+      if (parent === this._incoming) return this.emit('enableIncoming', type);
+    };
+
+    removeIncomingEvent = function(type) {
+      var event, parent, result, shadowed_event, shadowed_name, _ref, _results;
+      result = findAndRemove(type, this._incoming);
+      if (result === void 0) return;
+      event = result.event, parent = result.parent;
+      if (parent === this._incoming) this.emit('disableIncoming', type);
+      _ref = event.shadow;
+      _results = [];
+      for (shadowed_name in _ref) {
+        shadowed_event = _ref[shadowed_name];
+        parent = insert(shadowed_event, this._incoming);
+        if (parent === this._incoming) {
+          _results.push(this.emit('enableIncoming', type));
+        } else {
+          _results.push(void 0);
+        }
+      }
+      return _results;
+    };
+
+    function CoupledEventEmitter2(options) {
+      var template;
+      CoupledEventEmitter2.__super__.constructor.call(this, options);
+      this._incoming = {};
+      if (options.wildcard) {
+        template = function(original_method, before, after, method) {
+          return function(type) {
+            var c_after, c_before, value;
+            c_before = countListeners(type.split(this.delimiter), this.listenerTree);
+            value = EventEmitter2.prototype[original_method].apply(this, arguments);
+            c_after = countListeners(type.split(this.delimiter), this.listenerTree);
+            if ((c_before === before || (before === void 0 && c_before > 0)) && c_after === after) {
+              if (type !== 'enableIncoming' && type !== 'disableIncoming') {
+                method.call(this, type);
+              }
+            }
+            return value;
+          };
+        };
+        this.on = template('on', 0, 1, addIncomingEvent);
+        this.off = template('off', 1, 0, removeIncomingEvent);
+        this.removeAllListeners = template('removeAllListeners', void 0, 0, removeIncomingEvent);
+        this.incomingEvents = function() {
+          var type, _results;
+          _results = [];
+          for (type in this._incoming) {
+            _results.push(type);
+          }
+          return _results;
+        };
+      } else {
+        template = function(original_method, before, after, event) {
+          return function(type) {
+            var exists_after, exists_before, value;
+            exists_before = this._events[type] != null;
+            value = EventEmitter2.prototype[original_method].apply(this, arguments);
+            exists_after = this._events[type] != null;
+            if (exists_before === before && exists_after === after) {
+              this.emit(event, type);
+            }
+            return value;
+          };
+        };
+        this.on = template('on', false, true, 'enableIncoming');
+        this.off = template('off', true, false, 'disableIncoming');
+        this.removeAllListeners = template('removeAllListeners', true, false, 'disableIncoming');
+        this.incomingEvents = function() {
+          var type, _results;
+          _results = [];
+          for (type in this._events) {
+            _results.push(type);
+          }
+          return _results;
+        };
+      }
+    }
+
+    return CoupledEventEmitter2;
+
+  })();
+
+  ServerSentEvents = (function() {
+
+    __extends(ServerSentEvents, EventEmitter2);
+
+    function ServerSentEvents(options) {
+      var _ref;
+      this.options = options;
+      this.stop = __bind(this.stop, this);
+      this.start = __bind(this.start, this);
+      this.onmessage = __bind(this.onmessage, this);
+      this.living = (_ref = this.options.living) != null ? _ref : true;
+      if (this.living) this.start();
+    }
+
+    ServerSentEvents.prototype.onmessage = function(e) {
+      var event, type, _ref;
+      _ref = JSON.parse(e.data), type = _ref.type, event = _ref.event;
+      return this.emit(type, event);
+    };
+
+    ServerSentEvents.prototype.start = function() {
+      this.source = new EventSource(this.options.url);
+      return this.source.addEventListener('message', this.onmessage, false);
+    };
+
+    ServerSentEvents.prototype.stop = function() {
+      return this.source.close();
+    };
+
+    return ServerSentEvents;
+
+  })();
 
   LongPoll = (function() {
 
-    function LongPoll(url, callback, living) {
-      this.url = url;
-      this.callback = callback;
-      this.living = living != null ? living : true;
-      this.stop = __bind(this.stop, this);
-      this.start = __bind(this.start, this);
+    __extends(LongPoll, EventEmitter2);
+
+    function LongPoll(options) {
+      var _ref;
+      this.options = options;
+      this.living = (_ref = this.options.living) != null ? _ref : true;
       if (this.living) this.start();
     }
 
     LongPoll.prototype.start = function() {
+      var name, random, value, _ref;
       var _this = this;
       this.living = true;
-      this.request = superagent('GET', this.url);
+      random = Math.floor(Math.random() * 1000);
+      this.request = superagent('GET', this.options.url);
+      _ref = this.options.headers;
+      for (name in _ref) {
+        value = _ref[name];
+        this.request.set(name, value);
+      }
       return this.request.end(function(res) {
-        if (res.ok) _this.callback(res);
+        if (res.ok) _this.emit(res.header['hookio-event'], res.body);
         if (_this.living != null) return _this.start();
       });
     };
@@ -1247,141 +1469,80 @@ var superagent = function(exports){
 
   })();
 
-  EventListener = (function() {
-
-    __extends(EventListener, EventEmitter2);
-
-    function EventListener(base_url, event) {
-      var url;
-      var _this = this;
-      this.base_url = base_url;
-      this.event = event;
-      url = 'http://' + this.base_url + this.event.join('/');
-      this.longpoll = new LongPoll(url, function(res) {
-        console.log('emit', res.header['hookio-event'], res.body);
-        return _this.emit(res.header['hookio-event'], res.body);
-      });
+  newEventRequest = function(options) {
+    if (window.EventSource != null) {
+      return new ServerSentEvents(options);
+    } else {
+      return new LongPoll(options);
     }
-
-    return EventListener;
-
-  })();
+  };
 
   Hook = (function() {
-    var chain, create_url, forward_events, traverse;
+    var create_url, forwardEvents;
 
-    __extends(Hook, EventEmitter2);
+    __extends(Hook, CoupledEventEmitter2);
 
-    create_url = function(base_url, eventname, options) {
-      var name, pathname, query;
-      pathname = eventname.split('::').filter(function(x) {
-        return x.length > 0;
-      }).join('/');
-      query = options != null ? '?' + ((function() {
-        var _results;
-        _results = [];
-        for (name in options) {
-          _results.push("" + name + "=" + options[name]);
-        }
-        return _results;
-      })()).join('&') : '';
-      return 'http://' + base_url + pathname + query;
-    };
-
-    chain = function() {
-      var functions;
-      functions = arguments;
-      return function() {
-        var fn;
-        return ((function() {
-          var _i, _len, _results;
-          _results = [];
-          for (_i = 0, _len = functions.length; _i < _len; _i++) {
-            fn = functions[_i];
-            _results.push(fn.apply(this, arguments));
-          }
-          return _results;
-        }).apply(this, arguments))[0];
-      };
-    };
-
-    traverse = function(node, process, route) {
-      var child_name, cont, subnode, subroute, _results;
-      if (route == null) route = [];
-      _results = [];
-      for (child_name in node) {
-        if (child_name === '_listeners' || child_name === '_longpoll') continue;
-        cont = process(subnode = node[child_name], subroute = route.concat([child_name]));
-        if (cont !== false) {
-          _results.push(traverse(subnode, process, subroute));
-        } else {
-          _results.push(void 0);
-        }
-      }
-      return _results;
-    };
-
-    forward_events = function(from, to) {
+    forwardEvents = function(from, to) {
       return from.onAny(function(data) {
+        console.log('forwarding', this.event, data);
         return EventEmitter2.prototype.emit.call(to, this.event, data);
       });
     };
 
+    create_url = function(base_url, event, id) {
+      return 'http://' + base_url + event.split('::').join('/') + '?id=' + id;
+    };
+
     function Hook(base_url) {
-      var fn, _i, _len, _ref;
       this.base_url = base_url != null ? base_url : window.hook_address;
-      this.send = __bind(this.send, this);
-      this.check_listeners = __bind(this.check_listeners, this);
+      this.emit = __bind(this.emit, this);
+      this.disable = __bind(this.disable, this);
+      this.enable = __bind(this.enable, this);
       Hook.__super__.constructor.call(this, {
         wildcard: true,
         delimiter: '::'
       });
-      _ref = ['on', 'off', 'removeAllListeners'];
-      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-        fn = _ref[_i];
-        this[fn] = chain(this[fn], this.check_listeners);
-      }
-      this.original_emit = this.emit;
-      this.emit = chain(this.original_emit, this.send, this.check_listeners);
+      this.original_emit = CoupledEventEmitter2.prototype.emit;
+      this.eventSources = {};
+      this.id = '' + Math.floor(Math.random() * 1000000);
+      this.on('enableIncoming', this.enable);
+      this.on('disableIncoming', this.disable);
     }
 
-    Hook.prototype.check_listeners = function() {
-      var check_node;
-      var _this = this;
-      check_node = function(node, route) {
-        if (route == null) route = [];
-        if (node._listeners != null) {
-          if (!(node._longpoll != null)) {
-            node._longpoll = new EventListener(_this.base_url, route);
-            forward_events(node._longpoll, _this);
-            traverse(node, function(child) {
-              var _ref;
-              return (_ref = child._longpoll) != null ? _ref.stop() : void 0;
-            });
-          }
-          return false;
-        } else {
-          if (node._longpoll != null) {
-            node._longpoll.stop();
-            node._longpoll = void 0;
-            return traverse(node, function(child) {
-              var _ref;
-              return (_ref = child._longpoll) != null ? _ref.start() : void 0;
-            });
-          }
-        }
-      };
-      return traverse(this.listenerTree, check_node);
+    Hook.prototype.enable = function(event) {
+      console.log('enable', event);
+      if (this.eventSources[event] != null) {
+        return console.log('bug, listening to event twice');
+      }
+      this.eventSources[event] = newEventRequest({
+        url: create_url(this.base_url, event, this.id),
+        living: true
+      });
+      return forwardEvents(this.eventSources[event], this);
     };
 
-    Hook.prototype.send = function(event, data, callback) {
+    Hook.prototype.disable = function(event) {
+      console.log('disable', event.name);
+      if (!(this.eventSources[event] != null)) {
+        return console.log('bug, deleting none existing poll');
+      }
+      this.eventSources[event].stop();
+      return delete this.eventSources[event];
+    };
+
+    Hook.prototype.emit = function(event, data, callback) {
       var method, url;
-      if (event === 'newListener') return;
+      if (event === 'newListener' || event === 'enableIncoming' || event === 'disableIncoming') {
+        return this.original_emit(event, data, callback);
+      }
       console.log('sending', event, data);
-      if (!(data != null)) return;
-      url = create_url(this.base_url, event);
+      if (!(data != null)) return console.log('no data');
       method = callback != null ? 'put' : 'post';
-      return superagent(method, url).data(data).end();
+      url = create_url(this.base_url, event, this.id);
+      superagent(method, url).data(data).end(function() {
+        return console.log('sending', event, data, 'success');
+      });
+      return this.original_emit(event, data, callback);
     };
 
     return Hook;
@@ -1389,5 +1550,7 @@ var superagent = function(exports){
   })();
 
   window.Hook = Hook;
+
+  document.cookie = "id=" + Math.floor(Math.random() * 1000000) + "; path=/";
 
 }).call(this);
