@@ -6,8 +6,19 @@ fs             = require 'fs'
 
 class ServerSentEvents extends EventEmitter
   constructor : (@req, @res) ->
+    @res.writeHead 200,
+      'Content-Type'  : 'text/event-stream',
+      'Cache-Control' : 'no-cache',
+      'Connection'    : 'keep-alive'
 
-  emit : (type, event) ->
+    @req.on 'close', => EventEmitter.prototype.emit.call this, 'end'
+
+  emit : (type, event) =>
+    return super(type, event) if type is 'newListener'
+
+    eventString = "data: " + JSON.stringify({type: type, event: event}) + "\n\n"
+
+    @res.write eventString
 
 class LongPoll extends EventEmitter
   constructor : (@req, @res) ->
@@ -17,7 +28,7 @@ class LongPoll extends EventEmitter
     console.log 'longpoll:', @req.method, @req.url
     @on 'end', =>
       req.stat.end = new Date()
-      console.log "stat: #{req.method} #{req.url}",
+      console.log "longpoll stat: #{req.method} #{req.url}",
                   "#{req.stat.start.getHours()}:#{req.stat.start.getMinutes()}:#{req.stat.start.getSeconds()}", '-',
                   "#{req.stat.end.getHours()}:#{req.stat.end.getMinutes()}:#{req.stat.end.getSeconds()}"
     ###
@@ -52,22 +63,22 @@ class LongPoll extends EventEmitter
 
     EventEmitter.prototype.emit.call this, 'end'
 
-class EventRequest
-  constructor : (req, res) ->
+newEventRequest = (req, res) ->
     if req.headers.accept is 'text/event-stream'
-      this.__proto__ = new ServerSentEvents(req, res)
+      return new ServerSentEvents(req, res)
     else
-      this.__proto__ = new LongPoll(req, res)
+      return new LongPoll(req, res)
 
 hook = undefined
 
 emit_id = undefined
 
 listen = (eventname, options, req, res) ->
-  event_req = new EventRequest(req, res)
+  event_req = newEventRequest(req, res)
 
   respond = (data) ->
-    return if (emit_id isnt undefined) and (emit_id == req.headers['hookio-id'])
+    #console.log 'checking identity', emit_id, options.id
+    return if emit_id? and options.id? and emit_id == options.id
 
     event_req.emit this.event, data
 
@@ -87,7 +98,7 @@ emit = (eventname, options, req, res) ->
       res.end "JSON parse error."
       return
 
-    emit_id = req.headers['hookio-id']
+    emit_id = options.id ? undefined
     hook.emit eventname, data
     emit_id = undefined
 
@@ -101,15 +112,15 @@ emit = (eventname, options, req, res) ->
 module.exports = (h) ->
   hook = h
   return (req, res, next) ->
-    #req.stat =
-    #  start : new Date()
-    #  stop  : undefined
+    req.stat =
+      start : new Date()
+      stop  : undefined
 
     if req.method is 'OPTIONS'
       res.writeHead 200,
         'Access-Control-Allow-Origin' : '*'
         'Access-Control-Allow-Methods' : 'GET, POST, PUT'
-        'Access-Control-Allow-Headers' : 'Content-Type, Hookio-Id, X-Requested-With'
+        'Access-Control-Allow-Headers' : 'Content-Type, X-Requested-With'
 
       return res.end()
 
