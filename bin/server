@@ -1,9 +1,15 @@
 #!/usr/bin/env node
 
-rest = require('../lib/middleware.js');
+rest    = require('../lib/middleware.js');
 connect = require('connect');
+Hook    = require('hook.io').Hook
+
+hook = new Hook({name : 'rest', debug : true})
+
+hook.start()
+hook.setMaxListeners(100)
 
 server = connect.createServer();
-server.use('/hookio', rest());
+server.use('/hookio', rest(hook));
 server.use(connect.static('public'));
 server.listen(3000);

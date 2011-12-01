@@ -5,17 +5,27 @@ fs          = require 'fs'
 
 hook = undefined
 
+emit_id = undefined
+
 listen = (eventname, options, req, res) ->
-  # EventEmitter2 BUG workaround
   respond = (data) ->
+    return if (emit_id isnt undefined) and (emit_id == req.headers['hookio-id'])
+
     res.writeHead 200,
-      'Content-Type' : 'application/json'
-      'Hookio-Event' : @event
+      'Content-Type'  : 'application/json'
+      'Hookio-Event'  : @event
+      'Hookio-Id'     : req.headers['hookio-id']
+      'Cache-Control' : 'no-cache'
+
     res.end JSON.stringify(data)
 
     hook.off eventname, respond
 
+    #req.stat.end = new Date()
+    #console.log 'stat: ', req.method, req.url, req.stat.start, req.stat.end
+
   hook.on eventname, respond
+  req.on 'close', -> hook.off eventname, respond
 
 emit = (eventname, options, req, res) ->
   data = ''
@@ -30,22 +40,29 @@ emit = (eventname, options, req, res) ->
       res.end "JSON parse error."
       return
 
+    emit_id = req.headers['hookio-id']
     hook.emit eventname, data
+    emit_id = undefined
+
+    res.writeHead 200,
+      'Cache-Control' : 'no-cache'
     res.end()
 
-module.exports = ->
-  hook = new Hook
-    name  : 'rest'
-    debug : true
+    #req.stat.end = new Date()
+    #console.log 'stat: ', req.method, req.url, req.stat.start, req.stat.end
 
-  hook.start()
+module.exports = (h) ->
+  hook = h
+  return (req, res, next) ->
+    #req.stat =
+    #  start : new Date()
+    #  stop  : undefined
 
-  return (req, res) ->
     if req.method is 'OPTIONS'
       res.writeHead 200,
-        'Access-Control-Allow-Origin'  : '*'
+        'Access-Control-Allow-Origin' : '*'
         'Access-Control-Allow-Methods' : 'GET, POST, PUT'
-        'Access-Control-Allow-Headers' : 'Content-Type'
+        'Access-Control-Allow-Headers' : 'Content-Type, Hookio-Id, X-Requested-With'
 
       return res.end()
 
@@ -65,5 +82,5 @@ module.exports = ->
     options = querystring.parse(query)
 
     switch req.method
-      when 'GET'  then listen(eventname, options, req, res)
+      when 'GET' then listen(eventname, options, req, res)
       when 'POST' then emit(eventname, options, req, res)
