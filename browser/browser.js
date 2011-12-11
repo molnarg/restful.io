@@ -1455,7 +1455,7 @@ var superagent = function(exports){
         this.request.set(name, value);
       }
       return this.request.end(function(res) {
-        if (res.ok) _this.emit(res.header['hookio-event'], res.body);
+        if (res.ok) _this.emit(res.header['event'], res.body);
         if (_this.living != null) return _this.start();
       });
     };
@@ -1539,7 +1539,7 @@ var superagent = function(exports){
       if (!(data != null)) return console.log('no data');
       method = callback != null ? 'put' : 'post';
       url = create_url(this.base_url, event, this.id);
-      superagent(method, url).data(data).end(function() {
+      superagent(method, url).data(JSON.stringify(data)).end(function() {
         return console.log('sending', event, data, 'success');
       });
       return this.original_emit(event, data, callback);

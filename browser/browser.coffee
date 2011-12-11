@@ -172,7 +172,7 @@ class LongPoll extends EventEmitter2
     @request = superagent('GET', @options.url)
     @request.set(name, value) for name, value of @options.headers
     @request.end (res) =>
-      @emit(res.header['hookio-event'], res.body) if res.ok
+      @emit(res.header['event'], res.body) if res.ok
       @start() if @living?
 
   stop : ->
@@ -235,7 +235,7 @@ class Hook extends CoupledEventEmitter2
     url = create_url @base_url, event, @id
 
     superagent(method, url)
-      .data(data)
+      .data(JSON.stringify(data))
       .end( -> console.log 'sending', event, data, 'success')
 
     @original_emit event, data, callback

@@ -3,78 +3,14 @@ url            = require 'url'
 querystring    = require 'querystring'
 fs             = require 'fs'
 {EventEmitter} = require 'events'
-
-class ServerSentEvents extends EventEmitter
-  constructor : (@req, @res) ->
-    @res.writeHead 200,
-      'Content-Type'  : 'text/event-stream',
-      'Cache-Control' : 'no-cache',
-      'Connection'    : 'keep-alive'
-
-    @req.on 'close', => EventEmitter.prototype.emit.call this, 'end'
-
-  emit : (type, event) =>
-    return super(type, event) if type is 'newListener'
-
-    eventString = "data: " + JSON.stringify({type: type, event: event}) + "\n\n"
-
-    @res.write eventString
-
-class LongPoll extends EventEmitter
-  constructor : (@req, @res) ->
-    @req.on 'close', => EventEmitter.prototype.emit.call this, 'end'
-
-    ###
-    console.log 'longpoll:', @req.method, @req.url
-    @on 'end', =>
-      req.stat.end = new Date()
-      console.log "longpoll stat: #{req.method} #{req.url}",
-                  "#{req.stat.start.getHours()}:#{req.stat.start.getMinutes()}:#{req.stat.start.getSeconds()}", '-',
-                  "#{req.stat.end.getHours()}:#{req.stat.end.getMinutes()}:#{req.stat.end.getSeconds()}"
-    ###
-
-  emit : (type, event) ->
-    return super(type, event) if type is 'newListener'
-
-    headers =
-      'Hookio-Event'  : type
-      'Hookio-Id'     : @req.headers['hookio-id']
-      'Cache-Control' : 'no-cache'
-
-    if typeof event is 'object' and event instanceof @req.__proto__.constructor
-      # Shortcutting with another request, streaming content
-      emitRequest = event
-
-      headers['Content-Type'] = emitRequest.headers['Content-Type']
-      @res.writeHead 200, headers
-
-      emitRequest.on 'data', (chunk) =>
-        @res.write chunk
-
-      emitRequest.on 'end', =>
-        @res.end()
-
-    else
-      # Regular event
-      headers['Content-Type'] = 'application/json'
-      @res.writeHead 200, headers
-
-      @res.end JSON.stringify(event)
-
-    EventEmitter.prototype.emit.call this, 'end'
-
-newEventRequest = (req, res) ->
-    if req.headers.accept is 'text/event-stream'
-      return new ServerSentEvents(req, res)
-    else
-      return new LongPoll(req, res)
+EventChannel   = require './eventchannel'
 
 hook = undefined
 
 emit_id = undefined
 
 listen = (eventname, options, req, res) ->
-  event_req = newEventRequest(req, res)
+  event_req = new EventChannel(req, res)
 
   respond = (data) ->
     #console.log 'checking identity', emit_id, options.id
