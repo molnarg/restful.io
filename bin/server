@@ -2,14 +2,13 @@
 
 rest    = require('../lib/middleware.js');
 connect = require('connect');
-Hook    = require('hook.io').Hook
+EventEmitter2 = require('eventemitter2').EventEmitter2;
 
-hook = new Hook({name : 'rest', debug : true})
+ee = new EventEmitter2({wildcard: true, delimiter: '::'});
 
-hook.start()
-hook.setMaxListeners(100)
+ee.setMaxListeners(100)
 
 server = connect.createServer();
-server.use('/hookio', rest(hook));
+server.use('/transfer', rest(ee));
 server.use(connect.static('public'));
-server.listen(3000);
+server.listen(4000);
