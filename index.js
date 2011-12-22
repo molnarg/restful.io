@@ -1,1 +1,1 @@
-module.exports = require('./lib/middleware')
+module.exports = require('./lib/session.js');

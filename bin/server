@@ -1,15 +1,11 @@
 #!/usr/bin/env node
 
-var rest          = require('../lib/middleware.js'),
-    connect       = require('connect'),
-    EventEmitter2 = require('eventemitter2').EventEmitter2,
-    ee, server;
-
-ee = new EventEmitter2({wildcard: true, delimiter: '::'});
-
-ee.setMaxListeners(100);
+var restfulSession = require('../'),
+    api            = new restfulSession(),
+    connect        = require('connect'),
+    server;
 
 server = connect.createServer();
-server.use('/transfer', rest(ee));
+server.use('/transfer', api.middleware);
 server.use(connect.static('public'));
 server.listen(4000);
