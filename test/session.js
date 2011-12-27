@@ -8,19 +8,21 @@ var Session = require('../lib/session.js');
 
 var Request = function(options) {
   var request = http.request({
-    method : options.method,
-    host :   'localhost',
-    port :   testPort,
-    path :   options.path,
-    headers : { 'Content-Type' : options.content_type }
+    method  : options.method,
+    host    : 'localhost',
+    port    : testPort,
+    path    : options.path,
+    headers : options.headers
   });
 
   request.ready = false;
   request.on('response', function(res) {
     request.response = res;
     res.body = '';
+    res.chunks = [];
     res.on('data', function(data) {
       res.body += data.toString();
+      res.chunks.push(data.toString());
     });
     res.on('end', function() {
       request.ready = true;
@@ -64,10 +66,10 @@ describe('A Session', function(){
           testEvent = 'x/y';
 
       var request = new Request({
-        method       : 'PUT',
-        path         : '/' + testEvent,
-        content_type : 'application/json',
-        data         : JSON.stringify(testObject)
+        method  : 'PUT',
+        path    : '/' + testEvent,
+        headers : { 'Content-Type' : 'application/json' },
+        data    : JSON.stringify(testObject)
       });
 
       it('emits the decoded object as an event', function(done){
@@ -85,10 +87,10 @@ describe('A Session', function(){
       var testEvent = 'x/y';
 
       var request = new Request({
-        method       : 'PUT',
-        path         : '/' + testEvent,
-        content_type : 'application/json',
-        data         :  '"Error{}'
+        method  : 'PUT',
+        path    : '/' + testEvent,
+        headers : { 'Content-Type' : 'application/json' },
+        data    :  '"Error{}'
       });
 
       request.start();
@@ -101,10 +103,10 @@ describe('A Session', function(){
           testData = 'test';
 
       var request = new Request({
-        method       : 'PUT',
-        path         : '/' + testEvent,
-        content_type : 'application/octet-steam',
-        data         :  testData
+        method  : 'PUT',
+        path    : '/' + testEvent,
+        headers : { 'Content-Type' : 'application/octet-steam' },
+        data    : testData
       });
 
       it('emits the HTTP stream object as an event', function(done){
