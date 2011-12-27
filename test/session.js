@@ -38,6 +38,28 @@ var Request = function(options) {
     }
   };
 
+  request.onChunk = function(callback) {
+    var n = 0;
+
+    if (request.response) {
+      if (request.response.chunks) {
+        for (n = 0; n < request.response.chunks.length; n++) {
+          callback(n, request.response.chunks[n]);
+        }
+      }
+
+      request.response.on('data', function(data) {
+        callback(n++, data.toString());
+      });
+    } else {
+      request.on('response', function(res) {
+        res.on('data', function(data) {
+          callback(n++, data.toString());
+        });
+      });
+    }
+  };
+
   request.start = function() {
     request.end(options.data);
   };
@@ -110,7 +132,6 @@ var RandomEvent = function(data_type) {
 
   this.type = type.join('/');
   this.data = random[data_type ? data_type : 'variable']();
-  console.log('random event', this);
 };
 
 describe('A Session', function(){
@@ -186,12 +207,49 @@ describe('A Session', function(){
 
   describe('in response to an HTTP GET request', function() {
     describe('which indicates client side SSE support (Accept header is "text/event-stream")', function() {
-      it('responds with 200 OK status code');
+      var request = new Request({
+        method  : 'GET',
+        path    : '/x/*',
+        headers : { 'Accept' : 'text/event-stream' }
+      });
 
-      it('streams matching events in \'data: {"type":"type", "event":"data"}\\n\\n\' format');
+      request.start();
 
-      it('never closes the connection, waits for the client to do so');
+      it('streams matching events in \'data: {"type":"type", "event":"data"}\\n\\n\' format', function(done) {
+        var i, event, events = [];
+
+        for (i = 0; i < 3; i++) {
+          event = { type: 'x/' + random.string(), data: random.object() };
+          events.push(event);
+          session.emit(event.type, event.data);
+        }
+
+        request.onChunk(function(index, chunk) {
+          var parsed_event;
+
+          chunk.substr(0, 6).should.equal('data: ');
+          chunk.substr(chunk.length-2).should.equal('\n\n');
+
+          parsed_event = JSON.parse(chunk.substr(6, chunk.length-8));
+          parsed_event.should.have.property('type');
+          parsed_event.type.should.eql(events[index].type);
+          parsed_event.should.have.property('event');
+          parsed_event.event.should.eql(events[index].data);
+
+          if (index === events.length - 1) {
+            done();
+          }
+        });
+      });
+
+      it('responds with 200 OK status code', request.statusCodeShouldBe(200));
+
+      it('never closes the connection, waits for the client to do so', function() {
+        request.ready.should.be.false;
+        request.abort();
+      });
     });
+
     describe('which doesnt indicate client side SSE support', function() {
       it('responds with 200 OK status code');
 
