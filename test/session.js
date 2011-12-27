@@ -38,7 +38,16 @@ var Request = function(options) {
 
   request.start = function() {
     request.end(options.data);
-  }
+  };
+
+  request.statusCodeShouldBe = function(statusCode) {
+    return function(done) {
+      request.onReady(function() {
+        request.response.statusCode.should.equal(statusCode);
+        done();
+      });
+    };
+  };
 
   return request;
 };
@@ -69,7 +78,7 @@ describe('A Session', function(){
         });
       });
 
-      it('responds with 200 OK status code');
+      it('responds with 200 OK status code', request.statusCodeShouldBe(200));
     });
 
     describe('with wrong JSON data as payload', function() {
@@ -82,13 +91,9 @@ describe('A Session', function(){
         data         :  '"Error{}'
       });
 
-      it('responds with 400 Bad Request status code', function(done){
-        request.start()
-        request.onReady(function() {
-          request.response.statusCode.should.equal(400);
-          done();
-        });
-      });
+      request.start();
+
+      it('responds with 400 Bad Request status code', request.statusCodeShouldBe(400));
     });
 
     describe('with binary data as payload (Content-Type isn\'t "application/json")', function() {
@@ -116,7 +121,7 @@ describe('A Session', function(){
         });
       });
 
-      it('responds with 200 OK status code');
+      it('responds with 200 OK status code', request.statusCodeShouldBe(200));
     });
   });
 
