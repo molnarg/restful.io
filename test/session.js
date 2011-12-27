@@ -120,18 +120,20 @@ var random = {
         type = types[Math.floor(Math.random()*5)];
 
     return random[type]();
+  },
+
+  'event' : function(data_type) {
+    var event = {}, type = [],
+        type_length = Math.ceil(Math.random()*3);
+
+    for (var i=0; i<type_length; i++)
+      type.push(random.string());
+
+    event.type = type.join('/');
+    event.data = random[data_type ? data_type : 'variable']();
+
+    return event;
   }
-};
-
-var RandomEvent = function(data_type) {
-  var type_length = Math.ceil(Math.random()*3),
-      type = [];
-
-  for (var i=0; i<type_length; i++)
-    type.push(random.string());
-
-  this.type = type.join('/');
-  this.data = random[data_type ? data_type : 'variable']();
 };
 
 describe('A Session', function(){
@@ -142,7 +144,7 @@ describe('A Session', function(){
 
   describe('in response to an HTTP PUT request', function(){
     describe('with JSON-encoded object as payload (Content-Type is "application/json")', function() {
-      var event = new RandomEvent('object');
+      var event = random.event('object');
 
       var request = new Request({
         method  : 'PUT',
@@ -163,7 +165,7 @@ describe('A Session', function(){
     });
 
     describe('with wrong JSON data as payload', function() {
-      var event = new RandomEvent('object');
+      var event = random.event('object');
 
       var request = new Request({
         method  : 'PUT',
@@ -178,7 +180,7 @@ describe('A Session', function(){
     });
 
     describe('with binary data as payload (Content-Type isn\'t "application/json")', function() {
-      var event = new RandomEvent('string');
+      var event = random.event('string');
 
       var request = new Request({
         method  : 'PUT',
