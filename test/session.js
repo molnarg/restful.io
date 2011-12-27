@@ -44,14 +44,73 @@ var Request = function(options) {
 
   request.statusCodeShouldBe = function(statusCode) {
     return function(done) {
-      request.onReady(function() {
+      if (request.response !== undefined) {
         request.response.statusCode.should.equal(statusCode);
+        done();
+      } else request.on('response', function(response) {
+        response.statusCode.should.equal(statusCode);
         done();
       });
     };
   };
 
   return request;
+};
+
+var random = {
+  'null' : function() { return null; },
+
+  'number' : function() { return Math.floor(Math.random()*100); },
+
+  'string' : function() {
+    var chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXTZabcdefghiklmnopqrstuvwxyz",
+        string_length = Math.ceil(Math.random()*5),
+        string = '';
+
+    for (var i=0; i<string_length; i++)
+      string += chars.substr(Math.floor(Math.random()*chars.length), 1);
+
+    return string;
+  },
+
+  'array' : function() {
+    var array_length = Math.floor(Math.random()*3),
+        array = [];
+
+    for (var i=0; i<array_length; i++)
+      array.push(random.variable());
+
+    return array;
+  },
+
+  'object' : function() {
+    var no_of_properties = Math.ceil(Math.random()*3),
+        object = {};
+
+    for (var i=0; i<no_of_properties; i++)
+      object[random.string()] = random.variable();
+
+    return object;
+  },
+
+  'variable' : function() {
+    var types = ['null', 'number', 'string', 'array', 'object'],
+        type = types[Math.floor(Math.random()*5)];
+
+    return random[type]();
+  }
+};
+
+var RandomEvent = function(data_type) {
+  var type_length = Math.ceil(Math.random()*3),
+      type = [];
+
+  for (var i=0; i<type_length; i++)
+    type.push(random.string());
+
+  this.type = type.join('/');
+  this.data = random[data_type ? data_type : 'variable']();
+  console.log('random event', this);
 };
 
 describe('A Session', function(){
@@ -62,20 +121,19 @@ describe('A Session', function(){
 
   describe('in response to an HTTP PUT request', function(){
     describe('with JSON-encoded object as payload (Content-Type is "application/json")', function() {
-      var testObject = {a:1, b:2},
-          testEvent = 'x/y';
+      var event = new RandomEvent('object');
 
       var request = new Request({
         method  : 'PUT',
-        path    : '/' + testEvent,
+        path    : '/' + event.type,
         headers : { 'Content-Type' : 'application/json' },
-        data    : JSON.stringify(testObject)
+        data    : JSON.stringify(event.data)
       });
 
       it('emits the decoded object as an event', function(done){
         request.start();
-        session.once(testEvent, function(eventdata) {
-          eventdata.should.eql(testObject);
+        session.once(event.type, function(eventdata) {
+          eventdata.should.eql(event.data);
           done();
         });
       });
@@ -84,11 +142,11 @@ describe('A Session', function(){
     });
 
     describe('with wrong JSON data as payload', function() {
-      var testEvent = 'x/y';
+      var event = new RandomEvent('object');
 
       var request = new Request({
         method  : 'PUT',
-        path    : '/' + testEvent,
+        path    : '/' + event.type,
         headers : { 'Content-Type' : 'application/json' },
         data    :  '"Error{}'
       });
@@ -99,25 +157,24 @@ describe('A Session', function(){
     });
 
     describe('with binary data as payload (Content-Type isn\'t "application/json")', function() {
-      var testEvent = 'a',
-          testData = 'test';
+      var event = new RandomEvent('string');
 
       var request = new Request({
         method  : 'PUT',
-        path    : '/' + testEvent,
+        path    : '/' + event.type,
         headers : { 'Content-Type' : 'application/octet-steam' },
-        data    : testData
+        data    : event.data
       });
 
       it('emits the HTTP stream object as an event', function(done){
         request.start();
-        session.once(testEvent, function(stream) {
+        session.once(event.type, function(stream) {
           stream.should.be.an.instanceof(events.EventEmitter);
           stream.should.have.property('readable');
           stream.should.have.property('pipe');
           stream.pipe.should.be.a('function');
           stream.on('data', function(data) {
-            data.toString().should.equal(testData);
+            data.toString().should.equal(event.data);
             done();
           });
         });
