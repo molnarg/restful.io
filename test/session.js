@@ -1,13 +1,14 @@
-var http   = require('http'),
+require('should');
+
+var http    = require('http'),
     events  = require('events'),
-    should = require('should');
+    Session = require('../lib/session.js'),
+    util    = require('./util');
 
 var testPort = 6000;
 
-var Session = require('../lib/session.js');
-
 var Request = function(options) {
-  var request = http.request({
+  var req = http.request({
     method  : options.method,
     host    : 'localhost',
     port    : testPort,
@@ -15,72 +16,44 @@ var Request = function(options) {
     headers : options.headers
   });
 
-  request.ready = false;
-  request.on('response', function(res) {
-    request.res = res;
+  util.recordHistory(req);
+
+  req.on('socket', function() {
+    if (options.sent) {
+      setTimeout(options.sent, 20);
+    }
+  });
+
+  req.ready = false;
+  req.on('response', function(res) {
+    req.res = res;
     res.body = '';
     res.chunks = [];
     res.on('data', function(data) {
+      req.emit('data', data);
       res.body += data.toString();
       res.chunks.push(data.toString());
     });
     res.on('end', function() {
-      request.ready = true;
-      request.emit('ready');
+      req.ready = true;
+      req.emit('ready');
     });
   });
 
-  request.onReady = function(callback) {
-    if (request.ready) {
-      callback();
-    } else {
-      request.on('ready', callback);
-    }
-  };
-
-  request.onChunk = function(callback) {
-    var n = 0;
-
-    if (request.res) {
-      if (request.res.chunks) {
-        for (n = 0; n < request.res.chunks.length; n++) {
-          callback(n, request.res.chunks[n]);
-        }
-      }
-
-      request.res.on('data', function(data) {
-        callback(n++, data.toString());
-      });
-    } else {
-      request.on('response', function(res) {
-        res.on('data', function(data) {
-          callback(n++, data.toString());
-        });
-      });
-    }
-  };
-
-  request.start = function() {
-    request.end(options.data);
-  };
-
-  request.statusCodeShouldBe = function(statusCode) {
+  req.statusCodeShouldBe = function(statusCode) {
     return function(done) {
-      if (request.res !== undefined) {
-        request.res.statusCode.should.equal(statusCode);
-        done();
-      } else request.on('response', function(res) {
-        res.statusCode.should.equal(statusCode);
+      req.history.ever('response', function(res) {
+        res.should.have.status(statusCode);
         done();
       });
     };
   };
 
-  if (options.start === true) {
-    request.start();
+  if (options.start !== false) {
+    req.end(options.data);
   }
 
-  return request;
+  return req;
 };
 
 var random = {
@@ -165,6 +138,8 @@ describe('A Session', function(){
 
   server.listen(testPort);
 
+  util.recordHistory(session);
+
   describe('in response to an HTTP PUT request', function(){
     describe('with JSON-encoded object as payload (Content-Type is "application/json")', function() {
       var event = random.event('object');
@@ -177,8 +152,7 @@ describe('A Session', function(){
       });
 
       it('emits the decoded object as an event', function(done){
-        request.start();
-        session.once(event.type, function(eventdata) {
+        session.history.ever(event.type, function(eventdata) {
           eventdata.should.eql(event.data);
           done();
         });
@@ -194,8 +168,7 @@ describe('A Session', function(){
         method  : 'PUT',
         path    : '/' + event.type,
         headers : { 'Content-Type' : 'application/json' },
-        data    :  '"Error{}',
-        start   : true
+        data    :  '"Error{}'
       });
 
       it('responds with 400 Bad Request status code', request.statusCodeShouldBe(400));
@@ -212,13 +185,12 @@ describe('A Session', function(){
       });
 
       it('emits the HTTP stream object as an event', function(done){
-        request.start();
-        session.once(event.type, function(stream) {
+        session.history.ever(event.type, function(stream) {
           stream.should.be.an.instanceof(events.EventEmitter);
           stream.should.have.property('readable');
           stream.should.have.property('pipe');
           stream.pipe.should.be.a('function');
-          stream.on('data', function(data) {
+          stream.history.ever('data', function(data) {
             data.toString().should.equal(event.data);
             done();
           });
@@ -231,35 +203,38 @@ describe('A Session', function(){
 
   describe('in response to an HTTP GET request', function() {
     describe('which indicates client side SSE support (Accept header is "text/event-stream")', function() {
+      var i, event, events = [];
+
       var request = new Request({
         method  : 'GET',
         path    : '/x/*',
         headers : { 'Accept' : 'text/event-stream' },
-        start   : true
+        sent    : function() {
+          for (i = 0; i < 3; i++) {
+            event = { type: 'x/' + random.string(), data: random.object() };
+            events.push(event);
+            session.emit(event.type, event.data);
+          }
+        }
       });
 
       it('streams matching events in \'data: {"type":"type", "event":"data"}\\n\\n\' format', function(done) {
-        var i, event, events = [];
+        var n = 0;
 
-        for (i = 0; i < 3; i++) {
-          event = { type: 'x/' + random.string(), data: random.object() };
-          events.push(event);
-          session.emit(event.type, event.data);
-        }
-
-        request.onChunk(function(index, chunk) {
+        request.history.ever('data', function(chunk) {
           var parsed_event;
 
+          chunk = chunk.toString();
           chunk.substr(0, 6).should.equal('data: ');
           chunk.substr(chunk.length-2).should.equal('\n\n');
 
           parsed_event = JSON.parse(chunk.substr(6, chunk.length-8));
           parsed_event.should.have.property('type');
-          parsed_event.type.should.eql(events[index].type);
+          parsed_event.type.should.eql(events[n].type);
           parsed_event.should.have.property('event');
-          parsed_event.event.should.eql(events[index].data);
+          parsed_event.event.should.eql(events[n].data);
 
-          if (index === events.length - 1) {
+          if (++n === events.length) {
             done();
           }
         });
@@ -275,16 +250,14 @@ describe('A Session', function(){
 
     describe('which doesnt indicate client side SSE support', function() {
       var new_test = function(event) {
-        setTimeout(function() {
-          session.emit(event.type, event.data);
-        }, 50);
-
         return {
           event : event,
           req : new Request({
             method  : 'GET',
             path    : '/' + event.type,
-            start   : true
+            sent    : function() {
+              session.emit(event.type, event.data);
+            }
           })
         };
       };
@@ -296,14 +269,14 @@ describe('A Session', function(){
           var event = random.event('stream');
           event.data.mime_type = 'text/plain';
           return event;
-        }())
+        }()),
       };
 
       var whenReady = function(assertions_callback) {
         return function(done) {
-          tests.obj.req.onReady(function(){
-            tests.buf.req.onReady(function(){
-              tests.str.req.onReady(function(){
+          tests.obj.req.history.ever('ready', function(){
+            tests.buf.req.history.ever('ready', function(){
+              tests.str.req.history.ever('ready', function(){
                 assertions_callback();
                 done();
               });
