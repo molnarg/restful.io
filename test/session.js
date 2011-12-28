@@ -17,7 +17,7 @@ var Request = function(options) {
 
   request.ready = false;
   request.on('response', function(res) {
-    request.response = res;
+    request.res = res;
     res.body = '';
     res.chunks = [];
     res.on('data', function(data) {
@@ -41,14 +41,14 @@ var Request = function(options) {
   request.onChunk = function(callback) {
     var n = 0;
 
-    if (request.response) {
-      if (request.response.chunks) {
-        for (n = 0; n < request.response.chunks.length; n++) {
-          callback(n, request.response.chunks[n]);
+    if (request.res) {
+      if (request.res.chunks) {
+        for (n = 0; n < request.res.chunks.length; n++) {
+          callback(n, request.res.chunks[n]);
         }
       }
 
-      request.response.on('data', function(data) {
+      request.res.on('data', function(data) {
         callback(n++, data.toString());
       });
     } else {
@@ -66,15 +66,19 @@ var Request = function(options) {
 
   request.statusCodeShouldBe = function(statusCode) {
     return function(done) {
-      if (request.response !== undefined) {
-        request.response.statusCode.should.equal(statusCode);
+      if (request.res !== undefined) {
+        request.res.statusCode.should.equal(statusCode);
         done();
-      } else request.on('response', function(response) {
-        response.statusCode.should.equal(statusCode);
+      } else request.on('response', function(res) {
+        res.statusCode.should.equal(statusCode);
         done();
       });
     };
   };
+
+  if (options.start === true) {
+    request.start();
+  }
 
   return request;
 };
@@ -120,6 +124,25 @@ var random = {
         type = types[Math.floor(Math.random()*5)];
 
     return random[type]();
+  },
+
+  'buffer' : function() {
+    return new Buffer(random.string());
+  },
+
+  'stream' : function() {
+    var stream = new events.EventEmitter(),
+        half1 = random.string(),
+        half2 = random.string();
+
+    stream.content = half1 + half2;
+    stream.readable = true;
+    stream.pipe = function(target) {
+      target.write(half1);
+      target.end(half2);
+    };
+
+    return stream;
   },
 
   'event' : function(data_type) {
@@ -171,10 +194,9 @@ describe('A Session', function(){
         method  : 'PUT',
         path    : '/' + event.type,
         headers : { 'Content-Type' : 'application/json' },
-        data    :  '"Error{}'
+        data    :  '"Error{}',
+        start   : true
       });
-
-      request.start();
 
       it('responds with 400 Bad Request status code', request.statusCodeShouldBe(400));
     });
@@ -212,10 +234,9 @@ describe('A Session', function(){
       var request = new Request({
         method  : 'GET',
         path    : '/x/*',
-        headers : { 'Accept' : 'text/event-stream' }
+        headers : { 'Accept' : 'text/event-stream' },
+        start   : true
       });
-
-      request.start();
 
       it('streams matching events in \'data: {"type":"type", "event":"data"}\\n\\n\' format', function(done) {
         var i, event, events = [];
