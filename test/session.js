@@ -274,11 +274,91 @@ describe('A Session', function(){
     });
 
     describe('which doesnt indicate client side SSE support', function() {
-      it('responds with 200 OK status code');
+      var new_test = function(event) {
+        setTimeout(function() {
+          session.emit(event.type, event.data);
+        }, 50);
 
-      it('sends the name of the next matching event in the "Event" header field, and the data as the payload');
+        return {
+          event : event,
+          req : new Request({
+            method  : 'GET',
+            path    : '/' + event.type,
+            start   : true
+          })
+        };
+      };
 
-      it('closes the connection after the first event');
+      var tests = {
+        obj : new_test(random.event('object')),
+        buf : new_test(random.event('buffer')),
+        str : new_test(function(){
+          var event = random.event('stream');
+          event.data.mime_type = 'text/plain';
+          return event;
+        }())
+      };
+
+      var whenReady = function(assertions_callback) {
+        return function(done) {
+          tests.obj.req.onReady(function(){
+            tests.buf.req.onReady(function(){
+              tests.str.req.onReady(function(){
+                assertions_callback();
+                done();
+              });
+            });
+          });
+        };
+      };
+
+      it('responds with 200 OK status code', whenReady(function() {
+        for (var testcase in tests) {
+          tests[testcase].req.res.should.have.status(200);
+        };
+      }));
+
+      it('sets the Event header to the name of the event', whenReady(function() {
+        for (var testcase in tests) {
+          tests[testcase].req.res.headers.should.have.property('event');
+          tests[testcase].req.res.headers.event.should.eql(tests[testcase].event.type);
+        };
+      }));
+
+      it('closes the connection after the first event', whenReady(function() {
+        for (var testcase in tests) {
+          tests[testcase].req.ready.should.be.true;
+        };
+      }));
+
+      describe('in case the event is not stream or buffer', function() {
+        it('sets the Content-Type header to "application/json"', whenReady(function() {
+          tests.obj.req.res.headers.should.have.property('content-type');
+          tests.obj.req.res.headers['content-type'].should.eql('application/json');
+        }));
+
+        it('sends the JSON-encoded object as the response body', whenReady(function() {
+          JSON.parse(tests.obj.req.res.body).should.eql(tests.obj.event.data);
+        }));
+      });
+
+      describe('in case the event is stream or buffer', function() {
+        it('sets the Content-Type header to the mime_type attribute of the event', whenReady(function() {
+          tests.str.req.res.headers.should.have.property('content-type');
+          tests.str.req.res.headers['content-type'].should.eql('text/plain');
+        }));
+
+        it('sets the Content-Type header to "application/octet-stream" if no mime_type is specified', whenReady(function() {
+          tests.buf.req.res.headers.should.have.property('content-type');
+          tests.buf.req.res.headers['content-type'].should.eql('application/octet-stream');
+        }));
+
+        it('streams the buffer/stream as the response body', whenReady(function() {
+          tests.buf.req.res.body.should.eql(tests.buf.event.data.toString());
+          tests.str.req.res.body.should.eql(tests.str.event.data.content);
+          tests.str.req.res.chunks.should.have.length(2);
+        }));
+      });
     });
   });
 });
