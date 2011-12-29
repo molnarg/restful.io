@@ -3,7 +3,9 @@ require('should');
 var http       = require('http'),
     events     = require('events'),
     RestfulApi = require('../lib/restfulapi.js'),
-    util       = require('./util');
+    Session    = require('../lib/session.js'),
+    util       = require('./util'),
+    random     = util.random;
 
 var testPort = 6000;
 
@@ -20,10 +22,24 @@ describe('The Restful API', function(){
 
   util.recordHistory(api);
 
-  it('creates a default Session before accepting HTTP requests');
+  it('creates a default Session before accepting HTTP requests', function() {
+    api.should.have.property('sessions');
+    api.sessions.should.have.property('default');
+    api.sessions.default.should.be.an.instanceof(Session);
+  });
 
   describe('when emit is called on it', function() {
-    it('forwards the event to all living Sessions');
+    var event = random.event();
+
+    api.sessions.session1 = new Session();
+    util.recordHistory(api.sessions.default, api.sessions.session1);
+
+    api.emit(event.type, event.data);
+
+    it('forwards the event to all living Sessions', function() {
+      api.sessions.default.history.contains(event.type).should.be.true;
+      api.sessions.session1.history.contains(event.type).should.be.true;
+    });
   });
 
   describe('in case of an incoming HTTP request', function() {
