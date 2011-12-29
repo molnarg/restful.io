@@ -123,6 +123,13 @@ describe('A Session', function(){
           });
         });
       });
+
+      it('sets the "mime_type" property of the emitted stream to the value of the Content-Type header', function() {
+        session.history.ever(event.type, function(stream) {
+          stream.should.have.property('mime_type');
+          stream.mime_type.should.equal(content_type);
+        });
+      });
     });
   });
 
