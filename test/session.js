@@ -75,14 +75,14 @@ describe('A Session', function(){
         data    : JSON.stringify(event.data)
       });
 
+      it('responds with 200 OK status code', request.statusCodeShouldBe(200));
+
       it('emits the decoded object as an event', function(done){
         session.history.ever(event.type, function(eventdata) {
           eventdata.should.eql(event.data);
           done();
         });
       });
-
-      it('responds with 200 OK status code', request.statusCodeShouldBe(200));
     });
 
     describe('with wrong JSON data as payload', function() {
@@ -99,14 +99,17 @@ describe('A Session', function(){
     });
 
     describe('with binary data as payload (Content-Type isn\'t "application/json")', function() {
-      var event = util.random.event('string');
+      var event = util.random.event('string'),
+          content_type = 'application/octet-steam';
 
       var request = new Request({
         method  : 'PUT',
         path    : '/' + event.type,
-        headers : { 'Content-Type' : 'application/octet-steam' },
+        headers : { 'Content-Type' : content_type },
         data    : event.data
       });
+
+      it('responds with 200 OK status code', request.statusCodeShouldBe(200));
 
       it('emits the HTTP stream object as an event', function(done){
         session.history.ever(event.type, function(stream) {
@@ -120,8 +123,6 @@ describe('A Session', function(){
           });
         });
       });
-
-      it('responds with 200 OK status code', request.statusCodeShouldBe(200));
     });
   });
 
@@ -141,6 +142,8 @@ describe('A Session', function(){
           }
         }
       });
+
+      it('responds with 200 OK status code', request.statusCodeShouldBe(200));
 
       it('streams matching events in \'data: {"type":"type", "event":"data"}\\n\\n\' format', function(done) {
         var n = 0;
@@ -164,15 +167,13 @@ describe('A Session', function(){
         });
       });
 
-      it('responds with 200 OK status code', request.statusCodeShouldBe(200));
-
       it('never closes the connection, waits for the client to do so', function() {
         request.ready.should.be.false;
         request.abort();
       });
     });
 
-    describe('which doesnt indicate client side SSE support', function() {
+    describe('which doesnt indicate client side SSE support (Accept header isn\'t "text/event-stream")', function() {
       var new_test = function(event) {
         return {
           event : event,
