@@ -1,4 +1,25 @@
+require('should');
+
+var http       = require('http'),
+    events     = require('events'),
+    RestfulApi = require('../lib/restfulapi.js'),
+    util       = require('./util');
+
+var testPort = 6000;
+
+var Request = util.requestTemplate({
+  host : 'localhost',
+  port : testPort
+});
+
 describe('The Restful API', function(){
+  var api = new RestfulApi(),
+      server = http.createServer(api.middleware);
+
+  server.listen(testPort);
+
+  util.recordHistory(api);
+
   it('creates a default Session before accepting HTTP requests');
 
   describe('when emit is called on it', function() {
