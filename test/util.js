@@ -2,19 +2,35 @@ var http    = require('http'),
     events = require('events');
 
 var recordHistory = module.exports.recordHistory = function(ee) {
-  var original_emit = ee.emit,
+  var args = Array.prototype.slice.call(arguments),
+      original_emit = ee.emit,
       events = [];
 
-  ee.history = {};
-  ee.history.ever = function(filter, callback) {
-    var i;
-    for (i = 0; i < events.length; i++) {
-      if (events[i][0] === filter) {
-        callback.apply(undefined, events[i].slice(1));
-      }
-    }
+  if (args.length !== 1) {
+    return args.forEach(function(ee){
+      recordHistory(ee);
+    });
+  }
 
-    ee.on(filter, callback);
+  ee.history = {
+    ever : function(filter, callback) {
+      events.forEach(function(event){
+        if (event[0] === filter) {
+          callback.apply(undefined, event.slice(1));
+        }
+      });
+      ee.on(filter, callback);
+    },
+
+    contains : function(filter) {
+      var seen = false;
+      events.forEach(function(event){
+        if (event[0] === filter) {
+          seen = true;
+        }
+      });
+      return seen;
+    }
   };
 
   ee.emit = function() {
@@ -24,7 +40,6 @@ var recordHistory = module.exports.recordHistory = function(ee) {
 
     for (i = 1; i < args.length; i++) {
       if (typeof args[i].emit === 'function') {
-        //console.log('tracking');
         recordHistory(args[i]);
       }
     }
