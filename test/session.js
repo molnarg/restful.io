@@ -7,54 +7,10 @@ var http    = require('http'),
 
 var testPort = 6000;
 
-var Request = function(options) {
-  var req = http.request({
-    method  : options.method,
-    host    : 'localhost',
-    port    : testPort,
-    path    : options.path,
-    headers : options.headers
-  });
-
-  util.recordHistory(req);
-
-  req.on('socket', function() {
-    if (options.sent) {
-      setTimeout(options.sent, 20);
-    }
-  });
-
-  req.ready = false;
-  req.on('response', function(res) {
-    req.res = res;
-    res.body = '';
-    res.chunks = [];
-    res.on('data', function(data) {
-      req.emit('data', data);
-      res.body += data.toString();
-      res.chunks.push(data.toString());
-    });
-    res.on('end', function() {
-      req.ready = true;
-      req.emit('ready');
-    });
-  });
-
-  req.statusCodeShouldBe = function(statusCode) {
-    return function(done) {
-      req.history.ever('response', function(res) {
-        res.should.have.status(statusCode);
-        done();
-      });
-    };
-  };
-
-  if (options.start !== false) {
-    req.end(options.data);
-  }
-
-  return req;
-};
+var Request = util.requestTemplate({
+  host : 'localhost',
+  port : testPort
+});
 
 describe('A Session', function(){
   var session = new Session(),

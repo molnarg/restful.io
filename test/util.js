@@ -1,4 +1,5 @@
-var events = require('events');
+var http    = require('http'),
+    events = require('events');
 
 var recordHistory = module.exports.recordHistory = function(ee) {
   var original_emit = ee.emit,
@@ -106,4 +107,57 @@ var random = module.exports.random = {
 
     return event;
   }
+};
+
+module.exports.requestTemplate = function(templateOptions) {
+  var Request = function(options) {
+    var req = http.request({
+      method  : options.method,
+      host    : templateOptions.host,
+      port    : templateOptions.port,
+      path    : options.path,
+      headers : options.headers
+    });
+
+    recordHistory(req);
+
+    req.on('socket', function() {
+      if (options.sent) {
+        setTimeout(options.sent, 20);
+      }
+    });
+
+    req.ready = false;
+    req.on('response', function(res) {
+      req.res = res;
+      res.body = '';
+      res.chunks = [];
+      res.on('data', function(data) {
+        req.emit('data', data);
+        res.body += data.toString();
+        res.chunks.push(data.toString());
+      });
+      res.on('end', function() {
+        req.ready = true;
+        req.emit('ready');
+      });
+    });
+
+    req.statusCodeShouldBe = function(statusCode) {
+      return function(done) {
+        req.history.ever('response', function(res) {
+          res.should.have.status(statusCode);
+          done();
+        });
+      };
+    };
+
+    if (options.start !== false) {
+      req.end(options.data);
+    }
+
+    return req;
+  };
+
+  return Request;
 };
