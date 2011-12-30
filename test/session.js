@@ -24,21 +24,19 @@ describe('A Session', function(){
     describe('with JSON-encoded object as payload (Content-Type is "application/json")', function() {
       var event = util.random.event('object');
 
-      var request = new Request({
+      var req = new Request({
         method  : 'PUT',
         path    : '/' + event.type,
         headers : { 'Content-Type' : 'application/json' },
         data    : JSON.stringify(event.data)
       });
 
-      it('responds with 200 OK status code', request.statusCodeShouldBe(200));
+      it('responds with 200 OK status code', req.statusCodeShouldBe(200));
 
-      it('emits the decoded object as an event', function(done){
-        session.history.ever(event.type, function(eventdata) {
-          eventdata.should.eql(event.data);
-          done();
-        });
-      });
+      it('emits the decoded object as an event', req.whenReady(function(){
+        var eventdata = session.history.first(event.type);
+        eventdata[0].should.eql(event.data);
+      }));
     });
 
     describe('with wrong JSON data as payload', function() {
@@ -58,34 +56,29 @@ describe('A Session', function(){
       var event = util.random.event('string'),
           content_type = 'application/octet-steam';
 
-      var request = new Request({
+      var req = new Request({
         method  : 'PUT',
         path    : '/' + event.type,
         headers : { 'Content-Type' : content_type },
         data    : event.data
       });
 
-      it('responds with 200 OK status code', request.statusCodeShouldBe(200));
+      it('responds with 200 OK status code', req.statusCodeShouldBe(200));
 
-      it('emits the HTTP stream object as an event', function(done){
-        session.history.ever(event.type, function(stream) {
-          stream.should.be.an.instanceof(events.EventEmitter);
-          stream.should.have.property('readable');
-          stream.should.have.property('pipe');
-          stream.pipe.should.be.a('function');
-          stream.history.ever('data', function(data) {
-            data.toString().should.equal(event.data);
-            done();
-          });
-        });
-      });
+      it('emits the HTTP stream object as an event', req.whenReady(function(){
+        var stream = session.history.first(event.type)[0];
+        stream.should.be.an.instanceof(events.EventEmitter);
+        stream.should.have.property('readable');
+        stream.should.have.property('pipe');
+        stream.pipe.should.be.a('function');
+        stream.history.first('data')[0].toString().should.equal(event.data);
+      }));
 
-      it('sets the "mime_type" property of the emitted stream to the value of the Content-Type header', function() {
-        session.history.ever(event.type, function(stream) {
-          stream.should.have.property('mime_type');
-          stream.mime_type.should.equal(content_type);
-        });
-      });
+      it('sets the "mime_type" property of the emitted stream to the value of the Content-Type header', req.whenReady(function() {
+        var stream = session.history.first(event.type)[0];
+        stream.should.have.property('mime_type');
+        stream.mime_type.should.equal(content_type);
+      }));
     });
   });
 
@@ -93,7 +86,7 @@ describe('A Session', function(){
     describe('which indicates client side SSE support (Accept header is "text/event-stream")', function() {
       var i, event, events = [];
 
-      var request = new Request({
+      var req = new Request({
         method  : 'GET',
         path    : '/x/*',
         headers : { 'Accept' : 'text/event-stream' },
@@ -106,12 +99,12 @@ describe('A Session', function(){
         }
       });
 
-      it('responds with 200 OK status code', request.statusCodeShouldBe(200));
+      it('responds with 200 OK status code', req.statusCodeShouldBe(200));
 
       it('streams matching events in \'data: {"type":"type", "event":"data"}\\n\\n\' format', function(done) {
         var n = 0;
 
-        request.history.ever('data', function(chunk) {
+        req.history.ever('data', function(chunk) {
           var parsed_event;
 
           chunk = chunk.toString();
@@ -131,8 +124,8 @@ describe('A Session', function(){
       });
 
       it('never closes the connection, waits for the client to do so', function() {
-        request.ready.should.be.false;
-        request.abort();
+        req.ready.should.be.false;
+        req.abort();
       });
     });
 

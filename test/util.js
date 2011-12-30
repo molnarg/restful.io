@@ -1,3 +1,5 @@
+require('should');
+
 var http    = require('http'),
     events = require('events');
 
@@ -13,23 +15,31 @@ var recordHistory = module.exports.recordHistory = function(ee) {
   }
 
   ee.history = {
-    ever : function(filter, callback) {
-      events.forEach(function(event){
-        if (event[0] === filter) {
-          callback.apply(undefined, event.slice(1));
+    get : function(filter) {
+      var i, matching = [];
+      for (i = 0; i < events.length; i++) {
+        if (events[i][0] === filter) {
+          matching.push(events[i].slice(1));
         }
+      }
+      return matching;
+    },
+
+    first : function(filter) {
+      var events = ee.history.get(filter);
+      events.length.should.be.above(0);
+      return events[0];
+    },
+
+    ever : function(filter, callback) {
+      ee.history.get(filter).forEach(function(eventArgs){
+        callback.apply(undefined, eventArgs);
       });
       ee.on(filter, callback);
     },
 
     contains : function(filter) {
-      var seen = false;
-      events.forEach(function(event){
-        if (event[0] === filter) {
-          seen = true;
-        }
-      });
-      return seen;
+      return 0 < ee.history.get(filter).length;
     }
   };
 
@@ -39,7 +49,7 @@ var recordHistory = module.exports.recordHistory = function(ee) {
     events.push(args);
 
     for (i = 1; i < args.length; i++) {
-      if (typeof args[i].emit === 'function') {
+      if (args[i] && typeof args[i].emit === 'function') {
         recordHistory(args[i]);
       }
     }
@@ -162,6 +172,15 @@ module.exports.requestTemplate = function(templateOptions) {
       return function(done) {
         req.history.ever('response', function(res) {
           res.should.have.status(statusCode);
+          done();
+        });
+      };
+    };
+
+    req.whenReady = function(assertionCallback) {
+      return function(done) {
+        req.history.ever('response', function() {
+          assertionCallback();
           done();
         });
       };
