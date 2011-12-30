@@ -34,7 +34,7 @@ describe('A Session', function(){
       it('responds with 200 OK status code', req.statusCodeShouldBe(200));
 
       it('emits the decoded object as an event', req.whenReady(function(){
-        var eventdata = session.history.first(event.type);
+        var eventdata = session.history.last(event.type);
         eventdata[0].should.eql(event.data);
       }));
     });
@@ -66,7 +66,7 @@ describe('A Session', function(){
       it('responds with 200 OK status code', req.statusCodeShouldBe(200));
 
       it('emits the HTTP stream object as an event', req.whenReady(function(){
-        var stream = session.history.first(event.type)[0];
+        var stream = session.history.last(event.type)[0];
         stream.should.be.an.instanceof(events.EventEmitter);
         stream.should.have.property('readable');
         stream.should.have.property('pipe');
@@ -75,7 +75,7 @@ describe('A Session', function(){
       }));
 
       it('sets the "mime_type" property of the emitted stream to the value of the Content-Type header', req.whenReady(function() {
-        var stream = session.history.first(event.type)[0];
+        var stream = session.history.last(event.type)[0];
         stream.should.have.property('mime_type');
         stream.mime_type.should.equal(content_type);
       }));

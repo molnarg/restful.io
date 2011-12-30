@@ -15,21 +15,24 @@ var recordHistory = module.exports.recordHistory = function(ee) {
   }
 
   ee.history = {
-    get : function(filter) {
+    get : function(filter, n) {
       var i, matching = [];
       for (i = 0; i < events.length; i++) {
         if (events[i][0] === filter) {
           matching.push(events[i].slice(1));
         }
       }
-      return matching;
+      if (n !== undefined) {
+        n.should.be.above(-1 - matching.length);
+        n.should.be.below(matching.length);
+        return matching[(matching.length + n) % matching.length];
+      } else {
+        return matching;
+      }
     },
 
-    first : function(filter) {
-      var events = ee.history.get(filter);
-      events.length.should.be.above(0);
-      return events[0];
-    },
+    first : function(filter) { return ee.history.get(filter, 0); },
+    last : function(filter) { return ee.history.get(filter, -1); },
 
     ever : function(filter, callback) {
       ee.history.get(filter).forEach(function(eventArgs){
